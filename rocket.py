@@ -11,18 +11,26 @@ class Rocket:
         self._dry_mass = dry_mass
         self._exhaust_velocity  = exhaust_velocity
         self._mass_flow_rate = mass_flow_rate
-        self._thrust = 0
-        self._net_force = 0
-        self._accel = np.array([0,0])
-        self._velocity = np.array([0,0])
-        self._position = np.array([0,0])
+        self._thrust = 0.0
+        self._net_force = 0.0
+        self._accel = np.array([0.0,0.0])
+        self._velocity = np.array([0.0,0.0])
+        self._position = np.array([0.0,0.0])
+        self._drag = np.array([0.0,0.0])
         self._dt = 0.1
-        self._pitch_start_angle = 90
-        self._pitch_end_angle = 45
-        self._pitch_duration = 100
-        self._angle = 0
-        self._time = 0
+        self._pitch_start_angle = 90.0
+        self._pitch_end_angle = 45.0
+        self._pitch_duration = 100.0
+        self._angle = 0.0
+        self._time = 0.0
         self._GRAVITY = 9.8
+        self._SEA_LEVEL_DENSITY = 1.225
+        self._SCALE_HEIGHT = 8500.0
+        self._air_density = 0.0
+        #constant for simplicity
+        self._DRAG_COEFFICIENT = 0.3
+        #chosen from a 2.5m diameter frontal of the rocket
+        self._cross_sectional_area = 4.9
     #Thrust is found by multiplying exhaust velocity and mass flow rate.
     def calc_thrust(self):
         #Thrusts calculates while the mass is still greater than the dry mass, indicating there is still propellant
@@ -31,6 +39,21 @@ class Rocket:
         #If mass is no longer great than dry mass, then there must be no more propellant left, thus no thrust
         else:
             self._thrust = 0
+
+    def calc_density(self):
+        self._air_density = self._SEA_LEVEL_DENSITY * math.exp(-self._position[1] / self._SCALE_HEIGHT)
+
+    def calc_drag(self):
+        speed = np.linalg.norm(self._velocity)
+        if speed > 0:
+            drag_magnitude = 0.5 * self._air_density * (speed ** 2) * self._DRAG_COEFFICIENT * self._cross_sectional_area
+            drag_x = -drag_magnitude * (self._velocity[0] / speed)
+            drag_y = -drag_magnitude * (self._velocity[1] / speed)
+            self._drag = np.array([drag_x, drag_y])
+        else:
+        #division by zero guard
+            self._drag = np.array([0.0,0.0])
+
     #Net force takes the angle of the rocket and converts it to radians. It then finds the x thrust from the cos of that
     #angle multiplied against the thrust value and the y thrust from the sin of that angle multiplied against the thrust
     #value. Then the net force for x and y is found as well. The x is just that since gravity has no effect on
@@ -39,8 +62,8 @@ class Rocket:
         angle_radians = math.radians(self._angle)
         thrust_x = self._thrust * math.cos(angle_radians)
         thrust_y = self._thrust * math.sin(angle_radians)
-        net_force_x = thrust_x
-        net_force_y = thrust_y - (self._mass * self._GRAVITY)
+        net_force_x = thrust_x + self._drag[0]
+        net_force_y = thrust_y - (self._mass * self._GRAVITY) + self._drag[1]
         self._net_force = np.array([net_force_x, net_force_y])
 
     def calc_accel(self):
@@ -64,6 +87,8 @@ class Rocket:
     def update(self):
         self.calc_pitch_angle()
         self.calc_thrust()
+        self.calc_density()
+        self.calc_drag()
         self.calc_net_force()
         self.calc_accel()
         self.update_velocity()
