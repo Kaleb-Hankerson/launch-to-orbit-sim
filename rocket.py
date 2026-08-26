@@ -14,10 +14,17 @@ class Rocket:
         self._thrust = 0.0
         self._net_force = 0.0
         self._accel = np.array([0.0,0.0])
-        self._velocity = np.array([0.0,0.0])
+        # Earth-rotation initial velocity (launch site tangential speed)
+        launch_latitude = 34.7  # degrees, approximate Huntsville/UAH latitude
+        earth_angular_velocity = 7.292e-5  # rad/s
+        earth_radius = 6.371e6  # meters
+        initial_vx = earth_angular_velocity * earth_radius * math.cos(math.radians(launch_latitude))
+        self._velocity = np.array([initial_vx, 0])
         self._position = np.array([0.0,0.0])
         self._drag = np.array([0.0,0.0])
         self._dt = 0.1
+        self._q = 0.0
+        self._max_q = 0.0
         self._pitch_start_angle = 90.0
         self._pitch_end_angle = 45.0
         self._pitch_duration = 100.0
@@ -54,6 +61,13 @@ class Rocket:
         #division by zero guard
             self._drag = np.array([0.0,0.0])
 
+    def calc_dynamic_pressure(self):
+        speed = np.linalg.norm(self._velocity)
+        self._q = 0.5 * self._air_density * (speed ** 2)
+        if self._q > self._max_q:
+            self._max_q = self._q
+
+
     #Net force takes the angle of the rocket and converts it to radians. It then finds the x thrust from the cos of that
     #angle multiplied against the thrust value and the y thrust from the sin of that angle multiplied against the thrust
     #value. Then the net force for x and y is found as well. The x is just that since gravity has no effect on
@@ -89,6 +103,7 @@ class Rocket:
         self.calc_thrust()
         self.calc_density()
         self.calc_drag()
+        self.calc_dynamic_pressure()
         self.calc_net_force()
         self.calc_accel()
         self.update_velocity()
@@ -105,3 +120,9 @@ class Rocket:
     @property
     def mass(self):
         return self._mass
+    @property
+    def q(self):
+        return self._q
+    @property
+    def max_q(self):
+        return self._max_q
