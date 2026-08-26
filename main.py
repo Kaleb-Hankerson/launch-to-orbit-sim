@@ -25,7 +25,7 @@ my_rocket = Rocket(mass,dry_mass,exhaust_velocity,mass_flow_rate)
 #Main loop that loops over each delta time interval of 0.1s, breaks out of loop when rocket comes back to the ground.
 #The time and heights at each step are stored in respective lists
 while True:
-    my_rocket.update()
+    my_rocket.rk4_stepper()
     vx_list.append(my_rocket.velocity[0])
     vy_list.append(my_rocket.velocity[1])
     speed_list.append(np.linalg.norm(my_rocket.velocity))

@@ -11,9 +11,6 @@ class Rocket:
         self._dry_mass = dry_mass
         self._exhaust_velocity  = exhaust_velocity
         self._mass_flow_rate = mass_flow_rate
-        self._thrust = 0.0
-        self._net_force = 0.0
-        self._accel = np.array([0.0,0.0])
         # Earth-rotation initial velocity (launch site tangential speed)
         launch_latitude = 34.7  # degrees, approximate Huntsville/UAH latitude
         earth_angular_velocity = 7.292e-5  # rad/s
@@ -21,95 +18,123 @@ class Rocket:
         initial_vx = earth_angular_velocity * earth_radius * math.cos(math.radians(launch_latitude))
         self._velocity = np.array([initial_vx, 0])
         self._position = np.array([0.0,0.0])
-        self._drag = np.array([0.0,0.0])
         self._dt = 0.1
         self._q = 0.0
         self._max_q = 0.0
         self._pitch_start_angle = 90.0
         self._pitch_end_angle = 45.0
         self._pitch_duration = 100.0
-        self._angle = 0.0
         self._time = 0.0
         self._GRAVITY = 9.8
         self._SEA_LEVEL_DENSITY = 1.225
         self._SCALE_HEIGHT = 8500.0
-        self._air_density = 0.0
         #constant for simplicity
         self._DRAG_COEFFICIENT = 0.3
         #chosen from a 2.5m diameter frontal of the rocket
         self._cross_sectional_area = 4.9
+
+#---------------- Start of helper methods for calc_derivatives -------------------------------------------------------
+    def calc_pitch_angle(self,time):
+        if time < self._pitch_duration:
+            return  self._pitch_start_angle - (self._pitch_start_angle - self._pitch_end_angle) * (time / self._pitch_duration)
+        else:
+            return self._pitch_end_angle
+
     #Thrust is found by multiplying exhaust velocity and mass flow rate.
-    def calc_thrust(self):
+    def calc_thrust(self, mass):
         #Thrusts calculates while the mass is still greater than the dry mass, indicating there is still propellant
-        if self._mass > self._dry_mass:
-            self._thrust = self._exhaust_velocity * self._mass_flow_rate
-        #If mass is no longer great than dry mass, then there must be no more propellant left, thus no thrust
+        if mass > self._dry_mass:
+            return self._exhaust_velocity * self._mass_flow_rate
+        #If mass is no longer greater than dry mass, then there must be no more propellant left, thus no thrust
         else:
-            self._thrust = 0
+            return 0
 
-    def calc_density(self):
-        self._air_density = self._SEA_LEVEL_DENSITY * math.exp(-self._position[1] / self._SCALE_HEIGHT)
+    def calc_mass_rate(self,mass):
+        if mass > self._dry_mass:
+            return -self._mass_flow_rate
+        else:
+            return 0
 
-    def calc_drag(self):
-        speed = np.linalg.norm(self._velocity)
+    def calc_density(self,position):
+         return self._SEA_LEVEL_DENSITY * math.exp(-position[1] / self._SCALE_HEIGHT)
+
+    def calc_drag(self,velocity, air_density):
+        speed = np.linalg.norm(velocity)
         if speed > 0:
-            drag_magnitude = 0.5 * self._air_density * (speed ** 2) * self._DRAG_COEFFICIENT * self._cross_sectional_area
-            drag_x = -drag_magnitude * (self._velocity[0] / speed)
-            drag_y = -drag_magnitude * (self._velocity[1] / speed)
-            self._drag = np.array([drag_x, drag_y])
+            drag_magnitude = 0.5 * air_density * (speed ** 2) * self._DRAG_COEFFICIENT * self._cross_sectional_area
+            drag_x = -drag_magnitude * (velocity[0] / speed)
+            drag_y = -drag_magnitude * (velocity[1] / speed)
+            return np.array([drag_x, drag_y])
         else:
-        #division by zero guard
-            self._drag = np.array([0.0,0.0])
-
-    def calc_dynamic_pressure(self):
-        speed = np.linalg.norm(self._velocity)
-        self._q = 0.5 * self._air_density * (speed ** 2)
-        if self._q > self._max_q:
-            self._max_q = self._q
-
+            return np.array([0.0,0.0])
 
     #Net force takes the angle of the rocket and converts it to radians. It then finds the x thrust from the cos of that
     #angle multiplied against the thrust value and the y thrust from the sin of that angle multiplied against the thrust
     #value. Then the net force for x and y is found as well. The x is just that since gravity has no effect on
     #horizontal force, and y is the thrust of y minus the effects of gravity.
-    def calc_net_force(self):
-        angle_radians = math.radians(self._angle)
-        thrust_x = self._thrust * math.cos(angle_radians)
-        thrust_y = self._thrust * math.sin(angle_radians)
-        net_force_x = thrust_x + self._drag[0]
-        net_force_y = thrust_y - (self._mass * self._GRAVITY) + self._drag[1]
-        self._net_force = np.array([net_force_x, net_force_y])
+    def calc_net_force(self, thrust, drag, angle, mass):
+        angle_radians = math.radians(angle)
+        thrust_x = thrust * math.cos(angle_radians)
+        thrust_y = thrust * math.sin(angle_radians)
+        net_force_x = thrust_x + drag[0]
+        net_force_y = thrust_y - (mass * self._GRAVITY) + drag[1]
+        return np.array([net_force_x, net_force_y])
 
-    def calc_accel(self):
-        self._accel = self._net_force / self._mass
-    def update_velocity(self):
-        self._velocity = self._velocity + (self._accel * self._dt)
-    def update_height(self):
-        self._position = self._position + (self._velocity * self._dt)
-    def update_mass(self):
-        #Update mass while it is still above dry mass
-        if self._mass > self._dry_mass:
-            self._mass = self._mass - (self._mass_flow_rate * self._dt)
-        #This stops the mass from dropping below the dry mass
-        else:
-            self._mass = self._dry_mass
-    def calc_pitch_angle(self):
-        if self._time < self._pitch_duration:
-            self._angle = self._pitch_start_angle - (self._pitch_start_angle - self._pitch_end_angle) * (self._time / self._pitch_duration)
-        else:
-            self._angle = self._pitch_end_angle
-    def update(self):
-        self.calc_pitch_angle()
-        self.calc_thrust()
-        self.calc_density()
-        self.calc_drag()
-        self.calc_dynamic_pressure()
-        self.calc_net_force()
-        self.calc_accel()
-        self.update_velocity()
-        self.update_height()
-        self.update_mass()
+    def calc_accel(self,net_force, mass):
+        return net_force / mass
+#----------------------- End of helper methods ------------------------------------------------------------
+
+    #This function finds the derivates(rates of change) for position, velocity, and mass at the given state. Since it is
+    #only concerned with the pass values, it can account for different states when called in the RK4 stepper.
+    #It sequentially calls the helper functions in the order they are needed.
+    def calc_derivatives(self, position, velocity, mass, time):
+        angle = self.calc_pitch_angle(time)
+        mass_rate = self.calc_mass_rate(mass)
+        thrust = self.calc_thrust(mass)
+        air_density = self.calc_density(position)
+        drag = self.calc_drag(velocity, air_density)
+        net_force = self.calc_net_force(thrust, drag, angle, mass)
+        accel = self.calc_accel(net_force, mass)
+
+        return velocity, accel, mass_rate
+
+    def rk4_stepper(self):
+        k1 = self.calc_derivatives(self._position, self._velocity, self._mass, self._time)
+        half_dt = self._dt / 2
+        mid_position_1 = self._position + k1[0] * half_dt
+        mid_velocity_1 = self._velocity + k1[1] * half_dt
+        mid_mass_1 = self._mass + k1[2] * half_dt
+        mid_time_1 = self._time + half_dt
+
+        k2 = self.calc_derivatives(mid_position_1, mid_velocity_1, mid_mass_1, mid_time_1)
+        mid_position_2 = self._position + k2[0] * half_dt
+        mid_velocity_2 = self._velocity + k2[1] * half_dt
+        mid_mass_2 = self._mass + k2[2] * half_dt
+        mid_time_2 = self._time + half_dt
+
+        k3 = self.calc_derivatives(mid_position_2, mid_velocity_2, mid_mass_2, mid_time_2)
+        end_position = self._position + k3[0] * self._dt
+        end_velocity = self._velocity + k3[1] * self._dt
+        end_mass = self._mass + k3[2] * self._dt
+        end_time = self._time + self._dt
+
+        k4 = self.calc_derivatives(end_position, end_velocity, end_mass, end_time)
+
+        final_velocity_rate = (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]) / 6
+        final_accel = (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]) / 6
+        final_mass_rate = (k1[2] + 2 * k2[2] + 2 * k3[2] + k4[2]) / 6
+
+        self._position = self._position + final_velocity_rate * self._dt
+        self._velocity = self._velocity + final_accel * self._dt
+        self._mass = self._mass + final_mass_rate * self._dt
         self._time = self._time + self._dt
+
+        #Dynamic pressure
+        air_density = self.calc_density(self._position)
+        speed = np.linalg.norm(self._velocity)
+        self._q = 0.5 * air_density * (speed ** 2)
+        if self._q > self._max_q:
+            self._max_q = self._q
 
     @property
     def position(self):
