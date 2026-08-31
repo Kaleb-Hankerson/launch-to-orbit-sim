@@ -3,6 +3,12 @@
 from rocket import Rocket
 import matplotlib.pyplot as plt
 import numpy as np
+import csv
+
+with open("telemetry.csv", "w", newline='') as csv_file:
+    csv_writer = csv.writer(csv_file)
+    csv_writer.writerow(["Time", "X position", "Y position", "Velocity(x)", "Velocity(y)", "Speed", "Mass","Accel(x)", "Accel(y)", "Q"])
+
 
 print("Welcome to the Launch-to-Orbit Simulator!\n")
 mass = float(input("What is the total mass of your rocket?\n"))
@@ -33,8 +39,23 @@ while True:
     time_list.append(time)
     x_list.append(my_rocket.position[0])
     y_list.append(my_rocket.position[1])
+
+    csv_writer.writerow([
+        time,
+        my_rocket.position[0],
+        my_rocket.position[1],
+        my_rocket.velocity[0],
+        my_rocket.velocity[1],
+        np.linalg.norm(my_rocket.velocity),
+        my_rocket.mass,
+        my_rocket.accel[0],
+        my_rocket.accel[1],
+        my_rocket.q
+    ])
+
     if my_rocket.position [1] <= 0:
         break
+
 
 print(f"Final flight phase: {my_rocket.flight_phase}")
 print(f"Eccentricity: {my_rocket.eccentricity}")

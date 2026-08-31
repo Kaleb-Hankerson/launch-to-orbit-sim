@@ -28,6 +28,7 @@ class Rocket:
         self._initial_vx = self._earth_angular_velocity * self._earth_radius * math.cos(math.radians(self._launch_latitude))
         self._velocity = np.array([self._initial_vx, 0])
         self._position = np.array([0.0,0.0])
+        self._accel = np.array([0.0,0.0])
         self._dt = 0.1
         self._q = 0.0
         self._max_q = 0.0
@@ -134,6 +135,7 @@ class Rocket:
 
         final_velocity_rate = (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]) / 6
         final_accel = (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]) / 6
+        self._accel = final_accel
         final_mass_rate = (k1[2] + 2 * k2[2] + 2 * k3[2] + k4[2]) / 6
 
         self._position = self._position + final_velocity_rate * self._dt
@@ -200,3 +202,6 @@ class Rocket:
     @property
     def period(self):
         return self._period
+    @property
+    def accel(self):
+        return self._accel
