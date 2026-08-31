@@ -36,6 +36,8 @@ while True:
     if my_rocket.position [1] <= 0:
         break
 
+print(f"Final flight phase: {my_rocket.flight_phase}")
+
 #X over Y plot
 plt.plot(x_list, y_list)
 plt.xlabel("Horizontal movement (m)")

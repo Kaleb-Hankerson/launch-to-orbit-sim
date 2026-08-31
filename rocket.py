@@ -4,19 +4,29 @@
 #is spent, velocity and acceleration increasing as mass decreases, height increasing, etc.
 import numpy as np
 import math
+from enum import Enum
+
+class FlightPhase(Enum):
+    PRE_LAUNCH = 1
+    POWERED_FLIGHT = 2
+    COAST = 3
+    ORBIT_INSERTION = 4
+
 
 class Rocket:
     def __init__(self, mass, dry_mass, exhaust_velocity, mass_flow_rate):
+        self._flight_phase = FlightPhase.PRE_LAUNCH
         self._mass = mass
         self._dry_mass = dry_mass
         self._exhaust_velocity  = exhaust_velocity
         self._mass_flow_rate = mass_flow_rate
         # Earth-rotation initial velocity (launch site tangential speed)
-        launch_latitude = 34.7  # degrees, approximate Huntsville/UAH latitude
-        earth_angular_velocity = 7.292e-5  # rad/s
-        earth_radius = 6.371e6  # meters
-        initial_vx = earth_angular_velocity * earth_radius * math.cos(math.radians(launch_latitude))
-        self._velocity = np.array([initial_vx, 0])
+        self._launch_latitude = 34.7  # degrees, approximate Huntsville/UAH latitude
+        self._earth_angular_velocity = 7.292e-5  # rad/s
+        self._earth_radius = 6.371e6  # meters
+        self._GM = 3.986e14
+        self._initial_vx = self._earth_angular_velocity * self._earth_radius * math.cos(math.radians(self._launch_latitude))
+        self._velocity = np.array([self._initial_vx, 0])
         self._position = np.array([0.0,0.0])
         self._dt = 0.1
         self._q = 0.0
@@ -136,6 +146,25 @@ class Rocket:
         if self._q > self._max_q:
             self._max_q = self._q
 
+        #Flight Phase
+        self.calc_flight_phase(self._mass,self._position,self._velocity)
+
+    def calc_flight_phase(self, mass, position, velocity):
+        if mass > self._dry_mass:
+            self._flight_phase = FlightPhase.POWERED_FLIGHT
+        else:
+            earth_centered_position = np.array([position[0], self._earth_radius + position[1]])
+            distance = np.linalg.norm(earth_centered_position)
+            speed = np.linalg.norm(velocity)
+            semi_major_axis = self.calc_semi_major_axis(speed,distance)
+            if semi_major_axis > 0:
+                self._flight_phase = FlightPhase.ORBIT_INSERTION
+            else:
+                self._flight_phase = FlightPhase.COAST
+
+    def calc_semi_major_axis(self,speed,distance):
+        return 1 / (2 / distance - (speed**2)/self._GM)
+
     @property
     def position(self):
         return self._position
@@ -151,3 +180,6 @@ class Rocket:
     @property
     def max_q(self):
         return self._max_q
+    @property
+    def flight_phase(self):
+        return self._flight_phase
