@@ -42,6 +42,8 @@ class Rocket:
         self._DRAG_COEFFICIENT = 0.3
         #chosen from a 2.5m diameter frontal of the rocket
         self._cross_sectional_area = 4.9
+        self._eccentricity = 0.0
+        self._period = 0.0
 
 #---------------- Start of helper methods for calc_derivatives -------------------------------------------------------
     def calc_pitch_angle(self,time):
@@ -156,11 +158,20 @@ class Rocket:
             earth_centered_position = np.array([position[0], self._earth_radius + position[1]])
             distance = np.linalg.norm(earth_centered_position)
             speed = np.linalg.norm(velocity)
-            semi_major_axis = self.calc_semi_major_axis(speed,distance)
+            semi_major_axis = self.calc_semi_major_axis(speed, distance)
             if semi_major_axis > 0:
                 self._flight_phase = FlightPhase.ORBIT_INSERTION
+                self._eccentricity = self.calc_eccentricity(earth_centered_position, velocity, semi_major_axis)
+                self._period = self.calc_period(semi_major_axis)
             else:
                 self._flight_phase = FlightPhase.COAST
+
+    def calc_eccentricity(self, earth_centered_position, velocity, semi_major_axis):
+        h = (earth_centered_position[0] * velocity[1] - (earth_centered_position[1] * velocity[0]))
+        return math.sqrt(1 - (h ** 2) / (self._GM * semi_major_axis))
+
+    def calc_period(self, semi_major_axis):
+        return 2 * math.pi * math.sqrt(semi_major_axis ** 3 / self._GM)
 
     def calc_semi_major_axis(self,speed,distance):
         return 1 / (2 / distance - (speed**2)/self._GM)
@@ -183,3 +194,9 @@ class Rocket:
     @property
     def flight_phase(self):
         return self._flight_phase
+    @property
+    def eccentricity(self):
+        return self._eccentricity
+    @property
+    def period(self):
+        return self._period

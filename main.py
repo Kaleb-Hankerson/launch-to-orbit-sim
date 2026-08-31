@@ -37,6 +37,8 @@ while True:
         break
 
 print(f"Final flight phase: {my_rocket.flight_phase}")
+print(f"Eccentricity: {my_rocket.eccentricity}")
+print(f"Period: {my_rocket.period}")
 
 #X over Y plot
 plt.plot(x_list, y_list)
