@@ -1,5 +1,6 @@
-#This is the main program for the 2D launch-to-orbit sim. Simulates a fixed, staged rocket configuration,
-#logs telemetry to CSV, and plots trajectory/velocity/speed results.
+#Main program for the 2D launch-to-orbit sim. Runs a fixed, staged rocket configuration
+#through RK4 integration, logs telemetry to CSV, and produces trajectory/velocity/speed
+#plots plus an animated, phase-colored trajectory replay.
 
 from rocket import Rocket, FlightPhase
 import matplotlib.pyplot as plt
@@ -105,6 +106,8 @@ ax.set_xlabel("Horizontal movement (m)")
 ax.set_ylabel("Vertical movement (m)")
 ax.set_title("Animated Trajectory")
 
+
+#Maps each flight phase to a display color for the animated trajectory plot
 phase_colors = {
     FlightPhase.PRE_LAUNCH: 'gray',
     FlightPhase.POWERED_FLIGHT: 'red',
@@ -112,7 +115,7 @@ phase_colors = {
     FlightPhase.ORBIT_INSERTION: 'green'
 }
 
-
+#matplotlib can't color a single line multiple colors, so the trajectory gets split into one segment per phase.
 segments = []
 start_idx = 0
 for i in range(1, len(phase_list)):
@@ -121,9 +124,10 @@ for i in range(1, len(phase_list)):
         start_idx = i
 segments.append((start_idx, len(phase_list), phase_list[start_idx]))
 
-
+#One empty line object per segment, pre-colored by phase that is filled in progressively as the animation plays
 trail_lines = [ax.plot([], [], '-', linewidth=1.5, color=phase_colors[phase])[0] for _, _, phase in segments]
 
+#dt is 0.1s so only animating every 20th point
 frame_skip = 20
 
 

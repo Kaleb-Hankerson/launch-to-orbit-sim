@@ -1,7 +1,12 @@
-#This is the rocket class for the 2D launch-to-orbit sim. Models a staged rocket (thrust, exhaust velocity,
-#and mass flow rate vary per stage) under gravity, atmospheric drag, and a linear pitch program. Uses RK4
-#integration via calc_derivatives()/rk4_stepper(). Tracks flight phase (a state machine), dynamic pressure/Max Q,
-#and orbital elements (eccentricity, period) once orbit is detected via the vis-viva equation.
+#Core physics engine for the launch-to-orbit rocket simulation. Models a two-stage rocket where thrust, exhaust
+#velocity, and mass flow rate vary per stage and each stage's structural mass is jettisoned on burnout. Simulates the
+#rocket under gravity, atmospheric drag, and a linear pitch program.
+#Physics is structured as parameter-in/value-out helper methods orchestrated by
+#calc_derivatives(), which is safely callable on hypothetical RK4 sample states. The
+#actual RK4 integration and the one real state commit per step happen in rk4_stepper().
+#Tracks flight phase via a state machine, dynamic pressure/Max Q, and orbital elements
+#(eccentricity, period) once orbit is detected via the vis-viva equation. See README for
+#known simplifications and the companion C++ physics port.
 
 import numpy as np
 import math
@@ -207,13 +212,19 @@ class Rocket:
             else:
                 self._flight_phase = FlightPhase.COAST
 
+    #Eccentricity from specific angular momentum (h, the 2D cross product of position and
+    #velocity) combined with the semi-major axis. 0 = circular orbit, near 1 = highly stretched
+    #ellipse, >=1 = parabolic/hyperbolic escape trajectory.
     def calc_eccentricity(self, earth_centered_position, velocity, semi_major_axis):
         h = (earth_centered_position[0] * velocity[1] - (earth_centered_position[1] * velocity[0]))
         return math.sqrt(1 - (h ** 2) / (self._GM * semi_major_axis))
 
+    #Orbital period from Kepler's third law, using the semi-major axis
     def calc_period(self, semi_major_axis):
         return 2 * math.pi * math.sqrt(semi_major_axis ** 3 / self._GM)
 
+    # Rearranged vis-viva equation, solved for semi-major axis given current speed and distance
+    # from Earth's center. Positive = elliptical orbit, negative = hyperbolic escape trajectory.
     def calc_semi_major_axis(self, speed, distance):
         return 1 / (2 / distance - (speed ** 2) / self._GM)
 
