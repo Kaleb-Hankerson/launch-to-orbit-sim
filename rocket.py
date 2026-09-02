@@ -1,7 +1,8 @@
-#This is the rocket class for the launch-to-orbit sim. It holds variables for mass,dry mass,height,velocity,
-#thrust,exhaust velocity,mass flow rate, and gravity. For the purposes of this sim, exhaust velocity and mass flow rate
-#are left constant, and as a byproduct, thrust is also constant. The rest will change over time, mass lowering as fuel
-#is spent, velocity and acceleration increasing as mass decreases, height increasing, etc.
+#This is the rocket class for the 2D launch-to-orbit sim. Models a staged rocket (thrust, exhaust velocity,
+#and mass flow rate vary per stage) under gravity, atmospheric drag, and a linear pitch program. Uses RK4
+#integration via calc_derivatives()/rk4_stepper(). Tracks flight phase (a state machine), dynamic pressure/Max Q,
+#and orbital elements (eccentricity, period) once orbit is detected via the vis-viva equation.
+
 import numpy as np
 import math
 from enum import Enum
@@ -14,13 +15,20 @@ class FlightPhase(Enum):
 
 
 class Rocket:
-    def __init__(self, mass, dry_mass, exhaust_velocity, mass_flow_rate):
+    def __init__(self):
         self._flight_phase = FlightPhase.PRE_LAUNCH
-        self._mass = mass
-        self._dry_mass = dry_mass
-        self._exhaust_velocity  = exhaust_velocity
-        self._mass_flow_rate = mass_flow_rate
-        # Earth-rotation initial velocity (launch site tangential speed)
+        #Ordered list of stages, burned in sequence (index 0 first). Each stage's propellant_mass and
+        #mass_flow_rate determine its burn time; structural_mass is the stage's own empty hardware weight,
+        #jettisoned once that stage's propellant is exhausted (except the final stage, which stays attached).
+        self._stages = [
+            {"exhaust_velocity": 3000, "mass_flow_rate": 250, "propellant_mass": 38000, "structural_mass": 4000},
+            {"exhaust_velocity": 3500, "mass_flow_rate": 60, "propellant_mass": 5000, "structural_mass": 500},
+        ]
+        self._current_stage_index = 0
+        self._mass = sum(stage["propellant_mass"] + stage["structural_mass"] for stage in self._stages)
+        self._initial_total_mass = self._mass
+        self._final_dry_mass = self._stages[-1]["structural_mass"]
+        #Earth-rotation initial velocity (launch site tangential speed)
         self._launch_latitude = 34.7  # degrees, approximate Huntsville/UAH latitude
         self._earth_angular_velocity = 7.292e-5  # rad/s
         self._earth_radius = 6.371e6  # meters
@@ -54,19 +62,31 @@ class Rocket:
             return self._pitch_end_angle
 
     #Thrust is found by multiplying exhaust velocity and mass flow rate.
-    def calc_thrust(self, mass):
-        #Thrusts calculates while the mass is still greater than the dry mass, indicating there is still propellant
-        if mass > self._dry_mass:
-            return self._exhaust_velocity * self._mass_flow_rate
-        #If mass is no longer greater than dry mass, then there must be no more propellant left, thus no thrust
+    def calc_thrust(self, mass, stage, stage_burnout_mass):
+        #Thrust calculates while mass is still greater than this stage's burnout threshold, indicating there is
+        #still propellant in this stage
+        if mass > stage_burnout_mass:
+            return stage["exhaust_velocity"] * stage["mass_flow_rate"]
+        #If mass is no longer greater than this stage's burnout threshold, this stage's propellant is exhausted,
+        #thus no thrust
         else:
             return 0
 
-    def calc_mass_rate(self,mass):
-        if mass > self._dry_mass:
-            return -self._mass_flow_rate
+    def calc_mass_rate(self,mass, stage, stage_burnout_mass):
+        if mass > stage_burnout_mass:
+            return -stage["mass_flow_rate"]
         else:
             return 0
+
+    def get_stage_and_burnout(self, mass):
+        cumulative_mass = 0
+        for i, stage in enumerate(self._stages):
+            cumulative_mass += stage["propellant_mass"] + stage["structural_mass"]
+            stage_burnout_mass = self._initial_total_mass - cumulative_mass + stage["structural_mass"]
+            if mass > stage_burnout_mass:
+                return stage, stage_burnout_mass
+            #If mass has dropped below everything, then rocket is in final stage's burnout
+        return self._stages[-1], self._final_dry_mass
 
     def calc_density(self,position):
          return self._SEA_LEVEL_DENSITY * math.exp(-position[1] / self._SCALE_HEIGHT)
@@ -97,13 +117,15 @@ class Rocket:
         return net_force / mass
 #----------------------- End of helper methods ------------------------------------------------------------
 
-    #This function finds the derivates(rates of change) for position, velocity, and mass at the given state. Since it is
-    #only concerned with the pass values, it can account for different states when called in the RK4 stepper.
+    #This function finds the derivatives(rates of change) for position, velocity, and mass at the given state.
+    #Since it is only concerned with the pass values, it can account for different states when called in
+    #the RK4 stepper.
     #It sequentially calls the helper functions in the order they are needed.
     def calc_derivatives(self, position, velocity, mass, time):
+        stage, stage_burnout_mass = self.get_stage_and_burnout(mass)
         angle = self.calc_pitch_angle(time)
-        mass_rate = self.calc_mass_rate(mass)
-        thrust = self.calc_thrust(mass)
+        mass_rate = self.calc_mass_rate(mass, stage, stage_burnout_mass)
+        thrust = self.calc_thrust(mass, stage, stage_burnout_mass)
         air_density = self.calc_density(position)
         drag = self.calc_drag(velocity, air_density)
         net_force = self.calc_net_force(thrust, drag, angle, mass)
@@ -141,7 +163,18 @@ class Rocket:
         self._position = self._position + final_velocity_rate * self._dt
         self._velocity = self._velocity + final_accel * self._dt
         self._mass = self._mass + final_mass_rate * self._dt
+        if self._mass < self._final_dry_mass:
+            self._mass = self._final_dry_mass
         self._time = self._time + self._dt
+
+        #Stage transition: if the (mass-derived) current stage no longer matches the tracked index,
+        #we've crossed a burnout boundary — jettison the previous stage's structural mass and advance.
+        current_stage, current_burnout = self.get_stage_and_burnout(self._mass)
+        if current_stage is not self._stages[self._current_stage_index]:
+            #We've crossed into a new stage — jettison the previous stage's structure
+            jettisoned_stage = self._stages[self._current_stage_index]
+            self._mass -= jettisoned_stage["structural_mass"]
+            self._current_stage_index += 1
 
         #Dynamic pressure
         air_density = self.calc_density(self._position)
@@ -150,11 +183,12 @@ class Rocket:
         if self._q > self._max_q:
             self._max_q = self._q
 
+
         #Flight Phase
         self.calc_flight_phase(self._mass,self._position,self._velocity)
 
     def calc_flight_phase(self, mass, position, velocity):
-        if mass > self._dry_mass:
+        if mass > self._final_dry_mass:
             self._flight_phase = FlightPhase.POWERED_FLIGHT
         else:
             earth_centered_position = np.array([position[0], self._earth_radius + position[1]])
@@ -205,3 +239,6 @@ class Rocket:
     @property
     def accel(self):
         return self._accel
+    @property
+    def stages(self):
+        return self._stages
