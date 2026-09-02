@@ -7,6 +7,7 @@ import numpy as np
 import math
 from enum import Enum
 
+
 class FlightPhase(Enum):
     PRE_LAUNCH = 1
     POWERED_FLIGHT = 2
@@ -33,10 +34,11 @@ class Rocket:
         self._earth_angular_velocity = 7.292e-5  # rad/s
         self._earth_radius = 6.371e6  # meters
         self._GM = 3.986e14
-        self._initial_vx = self._earth_angular_velocity * self._earth_radius * math.cos(math.radians(self._launch_latitude))
+        self._initial_vx = self._earth_angular_velocity * self._earth_radius * math.cos(
+            math.radians(self._launch_latitude))
         self._velocity = np.array([self._initial_vx, 0])
-        self._position = np.array([0.0,0.0])
-        self._accel = np.array([0.0,0.0])
+        self._position = np.array([0.0, 0.0])
+        self._accel = np.array([0.0, 0.0])
         self._dt = 0.1
         self._q = 0.0
         self._max_q = 0.0
@@ -54,10 +56,11 @@ class Rocket:
         self._eccentricity = 0.0
         self._period = 0.0
 
-#---------------- Start of helper methods for calc_derivatives -------------------------------------------------------
-    def calc_pitch_angle(self,time):
+    #---------------- Start of helper methods for calc_derivatives -------------------------------------------------------
+    def calc_pitch_angle(self, time):
         if time < self._pitch_duration:
-            return  self._pitch_start_angle - (self._pitch_start_angle - self._pitch_end_angle) * (time / self._pitch_duration)
+            return self._pitch_start_angle - (self._pitch_start_angle - self._pitch_end_angle) * (
+                        time / self._pitch_duration)
         else:
             return self._pitch_end_angle
 
@@ -72,7 +75,7 @@ class Rocket:
         else:
             return 0
 
-    def calc_mass_rate(self,mass, stage, stage_burnout_mass):
+    def calc_mass_rate(self, mass, stage, stage_burnout_mass):
         if mass > stage_burnout_mass:
             return -stage["mass_flow_rate"]
         else:
@@ -88,10 +91,10 @@ class Rocket:
             #If mass has dropped below everything, then rocket is in final stage's burnout
         return self._stages[-1], self._final_dry_mass
 
-    def calc_density(self,position):
-         return self._SEA_LEVEL_DENSITY * math.exp(-position[1] / self._SCALE_HEIGHT)
+    def calc_density(self, position):
+        return self._SEA_LEVEL_DENSITY * math.exp(-position[1] / self._SCALE_HEIGHT)
 
-    def calc_drag(self,velocity, air_density):
+    def calc_drag(self, velocity, air_density):
         speed = np.linalg.norm(velocity)
         if speed > 0:
             drag_magnitude = 0.5 * air_density * (speed ** 2) * self._DRAG_COEFFICIENT * self._cross_sectional_area
@@ -99,7 +102,7 @@ class Rocket:
             drag_y = -drag_magnitude * (velocity[1] / speed)
             return np.array([drag_x, drag_y])
         else:
-            return np.array([0.0,0.0])
+            return np.array([0.0, 0.0])
 
     #Net force takes the angle of the rocket and converts it to radians. It then finds the x thrust from the cos of that
     #angle multiplied against the thrust value and the y thrust from the sin of that angle multiplied against the thrust
@@ -113,9 +116,12 @@ class Rocket:
         net_force_y = thrust_y - (mass * self._GRAVITY) + drag[1]
         return np.array([net_force_x, net_force_y])
 
-    def calc_accel(self,net_force, mass):
+
+
+    def calc_accel(self, net_force, mass):
         return net_force / mass
-#----------------------- End of helper methods ------------------------------------------------------------
+
+    #----------------------- End of helper methods ------------------------------------------------------------
 
     #This function finds the derivatives(rates of change) for position, velocity, and mass at the given state.
     #Since it is only concerned with the pass values, it can account for different states when called in
@@ -183,9 +189,8 @@ class Rocket:
         if self._q > self._max_q:
             self._max_q = self._q
 
-
         #Flight Phase
-        self.calc_flight_phase(self._mass,self._position,self._velocity)
+        self.calc_flight_phase(self._mass, self._position, self._velocity)
 
     def calc_flight_phase(self, mass, position, velocity):
         if mass > self._final_dry_mass:
@@ -209,36 +214,45 @@ class Rocket:
     def calc_period(self, semi_major_axis):
         return 2 * math.pi * math.sqrt(semi_major_axis ** 3 / self._GM)
 
-    def calc_semi_major_axis(self,speed,distance):
-        return 1 / (2 / distance - (speed**2)/self._GM)
+    def calc_semi_major_axis(self, speed, distance):
+        return 1 / (2 / distance - (speed ** 2) / self._GM)
 
     @property
     def position(self):
         return self._position
+
     @property
     def velocity(self):
         return self._velocity
+
     @property
     def mass(self):
         return self._mass
+
     @property
     def q(self):
         return self._q
+
     @property
     def max_q(self):
         return self._max_q
+
     @property
     def flight_phase(self):
         return self._flight_phase
+
     @property
     def eccentricity(self):
         return self._eccentricity
+
     @property
     def period(self):
         return self._period
+
     @property
     def accel(self):
         return self._accel
+
     @property
     def stages(self):
         return self._stages

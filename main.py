@@ -1,10 +1,11 @@
 #This is the main program for the 2D launch-to-orbit sim. Simulates a fixed, staged rocket configuration,
 #logs telemetry to CSV, and plots trajectory/velocity/speed results.
 
-from rocket import Rocket
+from rocket import Rocket, FlightPhase
 import matplotlib.pyplot as plt
 import numpy as np
 import csv
+from matplotlib.animation import FuncAnimation
 
 with open("telemetry.csv", "w", newline='') as csv_file:
     csv_writer = csv.writer(csv_file)
@@ -28,6 +29,7 @@ with open("telemetry.csv", "w", newline='') as csv_file:
     vx_list = []
     vy_list = []
     speed_list = []
+    phase_list = []
 
 
 
@@ -42,6 +44,7 @@ with open("telemetry.csv", "w", newline='') as csv_file:
         time_list.append(time)
         x_list.append(my_rocket.position[0])
         y_list.append(my_rocket.position[1])
+        phase_list.append(my_rocket.flight_phase)
 
         csv_writer.writerow([
             time,
@@ -92,4 +95,50 @@ plt.plot(time_list, speed_list)
 plt.xlabel("Time (s)")
 plt.ylabel("Speed (m/s)")
 plt.title("Total Speed Over Time")
+plt.show()
+
+fig, ax = plt.subplots()
+ax.set_xlim(0, max(x_list))
+ax.set_ylim(0, max(y_list))
+point, = ax.plot([], [], 'ko', markersize=8)
+ax.set_xlabel("Horizontal movement (m)")
+ax.set_ylabel("Vertical movement (m)")
+ax.set_title("Animated Trajectory")
+
+phase_colors = {
+    FlightPhase.PRE_LAUNCH: 'gray',
+    FlightPhase.POWERED_FLIGHT: 'red',
+    FlightPhase.COAST: 'blue',
+    FlightPhase.ORBIT_INSERTION: 'green'
+}
+
+
+segments = []
+start_idx = 0
+for i in range(1, len(phase_list)):
+    if phase_list[i] != phase_list[start_idx]:
+        segments.append((start_idx, i, phase_list[start_idx]))
+        start_idx = i
+segments.append((start_idx, len(phase_list), phase_list[start_idx]))
+
+
+trail_lines = [ax.plot([], [], '-', linewidth=1.5, color=phase_colors[phase])[0] for _, _, phase in segments]
+
+frame_skip = 20
+
+
+def update_frame(frame):
+    i = frame * frame_skip
+    point.set_data([x_list[i]], [y_list[i]])
+
+    for (start, end, phase), line in zip(segments, trail_lines):
+        if i > start:
+            actual_end = min(i, end)
+            line.set_data(x_list[start:actual_end], y_list[start:actual_end])
+
+    return point, *trail_lines
+
+
+num_frames = len(x_list) // frame_skip
+ani = FuncAnimation(fig, update_frame, frames=num_frames, interval=20)
 plt.show()
